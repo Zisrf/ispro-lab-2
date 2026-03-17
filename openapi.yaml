@@ -1,0 +1,154 @@
+openapi: 3.0.3
+info:
+  title: Simple Plant Manager API
+  version: "1.0"
+  description: Простое API для управления датчиками и поливом растений
+
+paths:
+  /devices:
+    get:
+      summary: Получить список устройств
+      responses:
+        '200':
+          description: Список устройств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+
+    post:
+      summary: Добавить устройство
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceInput'
+      responses:
+        '201':
+          description: Устройство создано
+
+  /devices/{id}:
+    get:
+      summary: Получить устройство по id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Устройство найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          description: Не найдено
+
+    delete:
+      summary: Удалить устройство
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Удалено
+
+  /devices/{id}/data:
+    post:
+      summary: Отправить данные с датчика
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorData'
+      responses:
+        '200':
+          description: Данные приняты
+
+    get:
+      summary: Получить данные датчика
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список данных
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorData'
+
+  /water:
+    post:
+      summary: Включить полив
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, duration]
+              properties:
+                deviceId:
+                  type: integer
+                duration:
+                  type: integer
+                  description: секунды
+      responses:
+        '200':
+          description: Полив запущен
+
+components:
+  schemas:
+    Device:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          example: sensor
+
+    DeviceInput:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+
+    SensorData:
+      type: object
+      properties:
+        temperature:
+          type: number
+        humidity:
+          type: number
+        soilMoisture:
+          type: number
+        timestamp:
+          type: string
+          format: date-time

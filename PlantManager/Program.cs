@@ -1,4 +1,6 @@
 using Microsoft.OpenApi.Models;
+using PlantManager.Metrics;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,9 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Простое API для управления датчиками и поливом растений"
     });
 });
+
+var plantMetrics = new PlantMetrics();
+builder.Services.AddSingleton(plantMetrics);
 
 var app = builder.Build();
 
@@ -30,8 +35,12 @@ app.UseSwaggerUI(options =>
     options.RoutePrefix = "swagger";
 });
 
+app.UseHttpMetrics();
+app.MapMetrics();
+
 var devices = new System.Collections.Concurrent.ConcurrentDictionary<int, Device>();
 var sensorDataStore = new System.Collections.Concurrent.ConcurrentDictionary<int, System.Collections.Concurrent.ConcurrentBag<SensorData>>();
+var deviceTypes = new System.Collections.Concurrent.ConcurrentDictionary<int, string>();
 var nextId = 0;
 
 app.MapGet("/devices", () => Results.Ok(devices.Values))
@@ -45,6 +54,8 @@ app.MapPost("/devices", (DeviceInput input) =>
     var device = new Device(id, input.Name, input.Type);
     devices[id] = device;
     sensorDataStore[id] = new System.Collections.Concurrent.ConcurrentBag<SensorData>();
+    deviceTypes[id] = input.Type;
+    plantMetrics.UpdateDevicesCount(devices.Count);
     return Results.Created($"/devices/{device.Id}", device);
 })
    .WithName("CreateDevice")
@@ -65,6 +76,8 @@ app.MapDelete("/devices/{id:int}", (int id) =>
 {
     if (!devices.TryRemove(id, out _)) return Results.NotFound();
     sensorDataStore.TryRemove(id, out _);
+    deviceTypes.TryRemove(id, out _);
+    plantMetrics.UpdateDevicesCount(devices.Count);
     return Results.NoContent();
 })
    .WithName("DeleteDevice")
@@ -77,6 +90,7 @@ app.MapPost("/devices/{id:int}/data", (int id, SensorData data) =>
     if (!sensorDataStore.TryGetValue(id, out var bag)) return Results.NotFound();
     var entry = data with { Timestamp = data.Timestamp ?? DateTime.UtcNow };
     bag.Add(entry);
+    plantMetrics.RecordSensorData(id);
     return Results.Ok(entry);
 })
    .WithName("PostSensorData")
@@ -97,6 +111,8 @@ app.MapGet("/devices/{id:int}/data", (int id) =>
 app.MapPost("/water", (WaterCommand cmd) =>
 {
     if (!devices.ContainsKey(cmd.DeviceId)) return Results.NotFound();
+    var deviceType = deviceTypes.TryGetValue(cmd.DeviceId, out var dt) ? dt : "unknown";
+    plantMetrics.RecordWatering(cmd.Duration, deviceType);
     return Results.Ok(new { message = $"Полив запущен для устройства {cmd.DeviceId} на {cmd.Duration} секунд." });
 })
    .WithName("StartWatering")
@@ -117,4 +133,3 @@ record SensorData(
     DateTime? Timestamp);
 
 record WaterCommand(int DeviceId, int Duration);
-

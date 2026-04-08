@@ -100,3 +100,71 @@ Content-Type: application/json
 ## SwaggerUI (из файла openapi.yaml)
 
 ![1](./docs/1.png)
+
+## Метрики и мониторинг
+
+Приложение собирает метрики в формате **Prometheus** и визуализирует их в **Grafana**.
+
+### Запуск с мониторингом
+
+```bash
+docker-compose up --build
+```
+
+### Сервисы
+
+| Сервис | URL | Описание |
+|--------|-----|----------|
+| **API** | http://localhost:5000 | REST API приложения |
+| **Swagger** | http://localhost:5000/swagger | Интерактивная документация |
+| **Prometheus** | http://localhost:9090 | Сбор и хранение метрик |
+| **Grafana** | http://localhost:3000 | Визуализация (admin/admin) |
+
+### Собираемые метрики
+
+#### Продуктовые метрики
+
+| Метрика | Тип | Описание |
+|---------|-----|----------|
+| `plantmanager_watering_duration_seconds` | Histogram | Время полива в секундах. Buckets: 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 |
+| `plantmanager_watering_operations_total` | Counter | Общее количество операций полива (с label `device_id`) |
+| `plantmanager_devices_created_total` | Counter | Общее количество созданных устройств |
+| `plantmanager_devices_deleted_total` | Counter | Общее количество удалённых устройств |
+| `plantmanager_sensor_data_entries_total` | Counter | Общее количество записей данных с датчиков (с label `device_id`) |
+
+#### Инфраструктурные метрики (prometheus-net)
+
+| Метрика | Тип | Описание |
+|---------|-----|----------|
+| `http_requests_total` | Counter | Всего HTTP запросов (labels: `method`, `endpoint`, `status`) |
+| `http_request_duration_seconds` | Histogram | Длительность HTTP запросов (labels: `method`, `endpoint`) |
+
+### Дашборд Grafana
+
+Дашборд **"Plant Manager Dashboard"** содержит следующие панели:
+
+1. **RPS by HTTP method** — запросов в секунду по HTTP методам
+2. **Active Devices** — текущее количество активных устройств
+3. **Device changes rate** — скорость создания/удаления устройств
+4. **Watering duration quantile** — p50/p95/p99 времени полива
+5. **Total watering operations** — всего операций полива
+6. **Watering rate by device** — частота полива по устройствам
+7. **Total sensor data entries** — всего записей с датчиков
+8. **Sensor data rate by device** — частота поступления данных по устройствам
+9. **HTTP latency by endpoint** — задержки HTTP запросов по эндпоинтам
+
+### Примеры запросов в Prometheus
+
+```promql
+# Количество операций полива
+plantmanager_watering_operations_total
+
+# p50 время полива
+histogram_quantile(0.5, sum by (le) (rate(plantmanager_watering_duration_seconds_bucket[5m])))
+
+# Активные устройства
+plantmanager_devices_created_total - plantmanager_devices_deleted_total
+
+# Запросов в секунду по методам
+sum by (method) (irate(http_requests_total[30s]))
+```

@@ -55,6 +55,7 @@ app.MapPost("/devices", (DeviceInput input) =>
     devices[id] = device;
     sensorDataStore[id] = new System.Collections.Concurrent.ConcurrentBag<SensorData>();
     deviceTypes[id] = input.Type;
+    plantMetrics.RecordDeviceCreated();
     plantMetrics.UpdateDevicesCount(devices.Count);
     return Results.Created($"/devices/{device.Id}", device);
 })
@@ -77,6 +78,7 @@ app.MapDelete("/devices/{id:int}", (int id) =>
     if (!devices.TryRemove(id, out _)) return Results.NotFound();
     sensorDataStore.TryRemove(id, out _);
     deviceTypes.TryRemove(id, out _);
+    plantMetrics.RecordDeviceDeleted();
     plantMetrics.UpdateDevicesCount(devices.Count);
     return Results.NoContent();
 })
@@ -111,8 +113,7 @@ app.MapGet("/devices/{id:int}/data", (int id) =>
 app.MapPost("/water", (WaterCommand cmd) =>
 {
     if (!devices.ContainsKey(cmd.DeviceId)) return Results.NotFound();
-    var deviceType = deviceTypes.TryGetValue(cmd.DeviceId, out var dt) ? dt : "unknown";
-    plantMetrics.RecordWatering(cmd.Duration, deviceType);
+    plantMetrics.RecordWatering(cmd.Duration, cmd.DeviceId);
     return Results.Ok(new { message = $"Полив запущен для устройства {cmd.DeviceId} на {cmd.Duration} секунд." });
 })
    .WithName("StartWatering")

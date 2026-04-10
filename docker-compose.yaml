@@ -19,6 +19,17 @@ services:
     networks:
       - monitoring
 
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - monitoring
+    command: -config.file=/etc/loki/loki.yml
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -34,6 +45,7 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
+      - loki
     networks:
       - monitoring
 
@@ -47,6 +59,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
+      - Loki:Url=http://loki:3100
     restart: unless-stopped
     networks:
       - monitoring
@@ -59,4 +72,6 @@ volumes:
   prometheus-data:
     driver: local
   grafana-data:
+    driver: local
+  loki-data:
     driver: local

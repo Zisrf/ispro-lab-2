@@ -1,8 +1,33 @@
 using Microsoft.OpenApi.Models;
 using PlantManager.Metrics;
 using Prometheus;
+using Serilog;
+using Serilog.Sinks.Grafana.Loki;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var lokiUrl = builder.Configuration["Loki:Url"] ?? "http://loki:3100";
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .Enrich.WithEnvironmentName()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
+    )
+    .WriteTo.GrafanaLoki(
+        uri: lokiUrl,
+        labels: new List<LokiLabel>
+        {
+            new() { Key = "app", Value = "plantmanager" },
+            new() { Key = "service", Value = "plantmanager" }
+        },
+        propertiesAsLabels: ["level", "service", "Environment"],
+        credentials: null
+    )
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -57,6 +82,7 @@ app.MapPost("/devices", (DeviceInput input) =>
     deviceTypes[id] = input.Type;
     plantMetrics.RecordDeviceCreated();
     plantMetrics.UpdateDevicesCount(devices.Count);
+    Log.Information("Device created: {DeviceId}, Name: {Name}, Type: {Type}", id, input.Name, input.Type);
     return Results.Created($"/devices/{device.Id}", device);
 })
    .WithName("CreateDevice")
@@ -80,6 +106,7 @@ app.MapDelete("/devices/{id:int}", (int id) =>
     deviceTypes.TryRemove(id, out _);
     plantMetrics.RecordDeviceDeleted();
     plantMetrics.UpdateDevicesCount(devices.Count);
+    Log.Information("Device deleted: {DeviceId}", id);
     return Results.NoContent();
 })
    .WithName("DeleteDevice")
@@ -93,6 +120,8 @@ app.MapPost("/devices/{id:int}/data", (int id, SensorData data) =>
     var entry = data with { Timestamp = data.Timestamp ?? DateTime.UtcNow };
     bag.Add(entry);
     plantMetrics.RecordSensorData(id);
+    Log.Debug("Sensor data received: DeviceId={DeviceId}, Temperature={Temperature}, Humidity={Humidity}", 
+        id, entry.Temperature, entry.Humidity);
     return Results.Ok(entry);
 })
    .WithName("PostSensorData")
@@ -114,6 +143,7 @@ app.MapPost("/water", (WaterCommand cmd) =>
 {
     if (!devices.ContainsKey(cmd.DeviceId)) return Results.NotFound();
     plantMetrics.RecordWatering(cmd.Duration, cmd.DeviceId);
+    Log.Information("Watering started: DeviceId={DeviceId}, Duration={Duration}s", cmd.DeviceId, cmd.Duration);
     return Results.Ok(new { message = $"Полив запущен для устройства {cmd.DeviceId} на {cmd.Duration} секунд." });
 })
    .WithName("StartWatering")

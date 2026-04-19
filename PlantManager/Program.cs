@@ -1,17 +1,24 @@
+using System.Diagnostics;
 using Microsoft.OpenApi.Models;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using PlantManager;
 using PlantManager.Metrics;
 using Prometheus;
 using Serilog;
 using Serilog.Sinks.Grafana.Loki;
 
+const string serviceName = "plantmanager";
 var builder = WebApplication.CreateBuilder(args);
 
-var lokiUrl = builder.Configuration["Loki:Url"] ?? "http://loki:3100";
+var lokiUrl = builder.Configuration["Loki:Url"] ?? throw new InvalidOperationException("Loki:Url is not set");
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .Enrich.WithEnvironmentName()
     .Enrich.FromLogContext()
+    .Enrich.With<TraceEnricher>()
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
     )
@@ -20,7 +27,7 @@ Log.Logger = new LoggerConfiguration()
         labels: new List<LokiLabel>
         {
             new() { Key = "app", Value = "plantmanager" },
-            new() { Key = "service", Value = "plantmanager" }
+            new() { Key = "service", Value = serviceName }
         },
         propertiesAsLabels: ["level", "service", "Environment"],
         credentials: null
@@ -28,6 +35,17 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+var tempoUrl = builder.Configuration["Tempo:Url"] ?? throw new InvalidOperationException("Tempo:Url is not set");
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddSource(serviceName)
+        .ConfigureResource(resource => resource.AddService(serviceName: serviceName, serviceVersion: "lab5"))
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter(options => { options.Endpoint = new Uri(tempoUrl); }));
+
+builder.Services.AddSingleton(new ActivitySource(serviceName));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -150,6 +168,53 @@ app.MapPost("/water", (WaterCommand cmd) =>
    .WithTags("Watering")
    .Produces(200)
    .Produces(404);
+
+app.MapGet("/trace/simple", (ActivitySource activitySource) =>
+{
+    using var activity = activitySource.StartActivity("SimpleTrace");
+    activity?.SetTag("trace.type", "simple");
+    activity?.SetTag("description", "Простой трейс с одним спаном");
+    return Results.Ok(new { message = "Простой трейс выполнен", trace_id = activity?.Id });
+})
+   .WithName("SimpleTrace")
+   .WithTags("Traces")
+   .Produces(200);
+
+app.MapGet("/trace/complex", (ActivitySource activitySource) =>
+{
+    using var rootActivity = activitySource.StartActivity("ComplexTrace");
+    rootActivity?.SetTag("trace.type", "complex");
+    rootActivity?.SetTag("description", "Сложный трейс с несколькими вложенными спанами");
+    
+    using var validationActivity = activitySource.StartActivity("ValidateRequest");
+    validationActivity?.SetTag("step", "validation");
+    Thread.Sleep(50);
+    validationActivity?.SetTag("validation.result", "success");
+    
+    using var processingActivity = activitySource.StartActivity("ProcessData");
+    processingActivity?.SetTag("step", "processing");
+    
+    using var dbActivity = activitySource.StartActivity("SaveToDatabase");
+    dbActivity?.SetTag("step", "database");
+    Thread.Sleep(100);
+    dbActivity?.SetTag("db.operation", "insert");
+    
+    using var notifyActivity = activitySource.StartActivity("SendNotification");
+    notifyActivity?.SetTag("step", "notification");
+    Thread.Sleep(30);
+    notifyActivity?.SetTag("notification.type", "email");
+    
+    processingActivity?.SetTag("processing.result", "completed");
+    
+    return Results.Ok(new { 
+        message = "Сложный трейс выполнен", 
+        trace_id = rootActivity?.Id,
+        spans = 4
+    });
+})
+   .WithName("ComplexTrace")
+   .WithTags("Traces")
+   .Produces(200);
 
 app.Run();
 

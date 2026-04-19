@@ -23,3 +23,16 @@ datasources:
           url: '$${__value.raw}'
           datasourceUid: 'tempo'
           urlDisplayLabel: 'View Trace'
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: 'loki'
+        filterByTraceID: true
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        query: '{app="plantmanager"} | json | trace_id = "${__span.traceId}"'

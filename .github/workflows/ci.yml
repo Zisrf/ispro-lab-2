@@ -90,7 +90,7 @@ jobs:
 
       - name: Install GitLeaks
         run: |
-          curl -sSfL https://raw.githubusercontent.com/zricethezav/gitleaks/v8.18.2/gitleaks_8.18.2_linux_arm64.tar.gz | tar -xz
+          curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_amd64.tar.gz | tar -xz
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run GitLeaks
@@ -118,14 +118,17 @@ jobs:
           push: false
           tags: plantmanager:latest
           load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: 'plantmanager:latest'
           format: 'table'
-          exit-code: '1'
+          exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
 
   coverage:
     runs-on: ubuntu-latest

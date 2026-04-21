@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS publish
 WORKDIR /src
 
 COPY ["PlantManager/PlantManager.csproj", "PlantManager/"]
@@ -6,7 +6,6 @@ RUN dotnet restore "PlantManager/PlantManager.csproj"
 
 COPY . .
 WORKDIR "/src/PlantManager"
-RUN dotnet build "PlantManager.csproj" -c Release -o /app/build
 RUN dotnet publish "PlantManager.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0

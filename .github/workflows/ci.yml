@@ -88,13 +88,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Install GitLeaks
-        run: |
-          curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_amd64.tar.gz | tar -xz
-          sudo mv gitleaks /usr/local/bin/
-
       - name: Run GitLeaks
-        run: gitleaks detect --source . --verbose || true
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          arguments: --source=. --verbose
+        continue-on-error: true
 
       - name: Check for vulnerable dependencies
         run: |

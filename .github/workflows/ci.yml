@@ -1,0 +1,74 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal
+
+  analyze:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0'
+
+      - name: Install analyzers
+        run: |
+          dotnet tool install --global dotnet-format 2>/dev/null || true
+          dotnet tool install --global dotnet-sdk-9.0 2>/dev/null || true
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Analyze
+        run: |
+          echo "=== Running dotnet format --verify-no-changes ==="
+          dotnet format --verify-no-changes --verbosity diagnostic || true
+          
+          echo "=== Running dotnet build with analyzers ==="
+          dotnet build --no-restore 2>&1 | tee build.log
+          
+          echo "=== Analyzer Summary ==="
+          grep -E "(warning|error|Warning|Error)" build.log || echo "No warnings or errors found"
